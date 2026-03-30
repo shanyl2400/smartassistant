@@ -4,27 +4,17 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from agentscope.agent import ReActAgent
-from agentscope.formatter import DashScopeChatFormatter
 from agentscope.memory import MemoryBase
-from agentscope.model import DashScopeChatModel
-from agentscope.token import CharTokenCounter
-
-# 使用结构化输出指定路由任务
-class RoutingChoice(BaseModel):
-    your_choice: Literal[
-        "Writing",   # 写作任务
-        "Programming",  # 编程任务
-        "DocumentQA",  # 问答召回&回答
-        None,
-    ] = Field(
-        description="选择正确的后续任务，如果任务太简单或没有合适的任务，则选择 ``None``",
-    )
+from .baseagent import create_base_agent
+from agentscope.tool import Toolkit
+from agentscope.memory import LongTermMemoryBase
 
 # 缓存存储已创建的智能体实例
 _agent_cache = None
 
 def get_router_agent(
     memory: MemoryBase,
+    long_term_memory: LongTermMemoryBase,
 ) -> ReActAgent:
     """创建一个 ReAct 智能体并运行一个简单任务。"""
     global _agent_cache
@@ -32,9 +22,9 @@ def get_router_agent(
     if _agent_cache is not None:
         return _agent_cache
 
-    router = ReActAgent(
-        name="Router",
-        sys_prompt='''
+    toolkit = Toolkit()
+    name="Router"
+    sys_prompt='''
         请根据用户输入判断用户意图
 【意图定义】
 意图1 【Writing】
@@ -55,7 +45,10 @@ def get_router_agent(
      * 示例：
       - 如何配置防火墙规则？
       - 员工手册里年假政策是什么？
-意图3 【Others】
+意图3 【Translate】
+    * 定义：用户要求将文本从一种语言准确流畅地转换为另一种语言，保持原文的意思、风格和语气，并符合目标语言的表达习惯。
+    * 示例：“请将这段中文产品说明翻译成英文，确保技术术语准确且语言自然。”
+意图4 【Others】
     * 名称：其他任务
     * 定义：用户请求其他任务，不包含写作、文档问答。
     * 特征：包含其他任务的描述，不包含写作、文档问答。
@@ -66,24 +59,14 @@ def get_router_agent(
  输入内容：                               
 只回答意图中选择一个，不要生成任何解释！
 回答范例：DocumentQA
-''',
-        model=DashScopeChatModel(
-            model_name="qwen-turbo",
-            api_key=os.environ["DASHSCOPE_API_KEY"],
-            stream=False,
-        ),
-        formatter=DashScopeChatFormatter(),
-        toolkit=[],
+'''
+    router = create_base_agent(
+        name=name, 
+        sys_prompt=sys_prompt, 
+        toolkit=toolkit,
         memory=memory,
-        compression_config=ReActAgent.CompressionConfig(
-            enable=True,
-            agent_token_counter=CharTokenCounter(),  # 智能体的 token 计数器
-            trigger_threshold=10000,  # 超过 10000 个 token 时触发压缩
-            keep_recent=3,            # 保持最近 3 条消息不被压缩
-        ),
+        long_term_memory=long_term_memory,
     )
-
-    router.set_console_output_enabled(True)
     # 将实例存入缓存
     _agent_cache = router
     

@@ -7,10 +7,15 @@ from agentscope.tool import Toolkit, execute_python_code
 from tools.time import get_current_time
 from agentscope.memory import MemoryBase
 from agentscope.token import CharTokenCounter
+from .baseagent import create_base_agent
+from agentscope.memory import LongTermMemoryBase
 
 # 缓存存储已创建的智能体实例
 _agent_cache = None
-def get_writing_agent(memory: MemoryBase) -> ReActAgent:        
+def get_writing_agent(
+    memory: MemoryBase,
+    long_term_memory: LongTermMemoryBase,
+    ) -> ReActAgent:        
     """创建一个 ReAct 智能体并运行一个简单任务。"""
     global _agent_cache
 
@@ -21,10 +26,9 @@ def get_writing_agent(memory: MemoryBase) -> ReActAgent:
     toolkit = Toolkit()
     toolkit.register_tool_function(execute_python_code)
     toolkit.register_tool_function(get_current_time)
-
-    writing_agent = ReActAgent(
-        name="帮我写作",
-        sys_prompt='''你是一名专业、资深、高审美、懂传播的金牌文案策划师，擅长撰写各类场景下的优质文案，包括但不限于：朋友圈文案、短视频口播、海报标题、小红书笔记、产品宣传语、活动文案、品牌文案、节日祝福、电商详情文案等。
+    
+    name="帮我写作"
+    sys_prompt='''你是一名专业、资深、高审美、懂传播的金牌文案策划师，擅长撰写各类场景下的优质文案，包括但不限于：朋友圈文案、短视频口播、海报标题、小红书笔记、产品宣传语、活动文案、品牌文案、节日祝福、电商详情文案等。
 你的写作原则：
 精准理解需求：严格按照用户指定的主题、场景、受众、风格、字数、结构进行创作，不偏离要求。
 风格多样化：可驾驭温暖治愈、高级简约、幽默有趣、走心煽情、专业严谨、文艺清新、犀利吸睛、口语化口播等多种风格。
@@ -32,24 +36,14 @@ def get_writing_agent(memory: MemoryBase) -> ReActAgent:
 语言自然高级：拒绝生硬套话、空洞口号，文字有质感、有温度、有记忆点，易读易传播。
 多版本输出：用户需要多个备选时，提供差异化版本，标注清晰，方便选择。
 直接交付成品：不啰嗦解释，不额外提问，一次性输出完整可用文案，必要时附带标题、话题标签、分段排版。
-你始终保持专业、高效、贴心的服务态度，以写出让用户满意的优质文案为目标。''',
-        model=DashScopeChatModel(
-            model_name="qwen-max",
-            api_key=os.environ["DASHSCOPE_API_KEY"],
-            stream=True,
-            enable_thinking=False,
-        ),
-        formatter=DashScopeMultiAgentFormatter(),
-        toolkit=toolkit,
+你始终保持专业、高效、贴心的服务态度，以写出让用户满意的优质文案为目标。'''
+    writing_agent = create_base_agent(
+        name=name, 
+        sys_prompt=sys_prompt, 
+        toolkit=toolkit, 
         memory=memory,
-        compression_config=ReActAgent.CompressionConfig(
-            enable=True,
-            agent_token_counter=CharTokenCounter(),  # 智能体的 token 计数器
-            trigger_threshold=10000,  # 超过 10000 个 token 时触发压缩
-            keep_recent=3,            # 保持最近 3 条消息不被压缩
-        ),
+        long_term_memory=long_term_memory,
     )
-    writing_agent.set_console_output_enabled(True)
 
     _agent_cache = writing_agent
     

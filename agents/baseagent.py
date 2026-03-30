@@ -7,8 +7,16 @@ from agentscope.formatter import DashScopeMultiAgentFormatter
 from agentscope.tool import Toolkit
 from agentscope.memory import MemoryBase
 from agentscope.token import CharTokenCounter
+from agentscope.memory import LongTermMemoryBase
+from agentscope.plan import PlanNotebook, Plan, SubTask
 
-def create_base_agent(name: str, sys_prompt: str, toolkit:Toolkit, memory: MemoryBase) -> ReActAgent:
+def create_base_agent(
+    name: str, 
+    sys_prompt: str, 
+    toolkit:Toolkit, 
+    memory: MemoryBase,
+    long_term_memory: LongTermMemoryBase,
+    ) -> ReActAgent:
     agent = ReActAgent(
         name=name,
         sys_prompt=sys_prompt,
@@ -27,6 +35,9 @@ def create_base_agent(name: str, sys_prompt: str, toolkit:Toolkit, memory: Memor
             trigger_threshold=10000,  # 超过 10000 个 token 时触发压缩
             keep_recent=3,            # 保持最近 3 条消息不被压缩
         ),
+        long_term_memory=long_term_memory,
+        long_term_memory_mode="agent_control",  # 使用 agent_control 模式
+        plan_notebook=PlanNotebook(),
     )
     agent.set_console_output_enabled(True)
     return agent

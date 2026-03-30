@@ -15,10 +15,14 @@ from agents.route_agent import get_router_agent, RoutingChoice
 from agents.docqa import get_docqa_agent
 from agents.writing import get_writing_agent
 from agents.chat import get_chat_agent
+from agents.translate import get_translate_agent
 from memory.short_term_memory import get_short_term_memory
+from memory.long_term_memory import get_long_term_memory
 
 print("✅ 依赖导入成功")
 
+os.environ["DASHSCOPE_API_KEY"] = "sk-a6ec71ba516747baba699ec2d81ff1a8"
+os.environ["AS_TOKEN"] = "ory_at_aEw8Fo7uTrEiBVXGEw4nWP1B3Zf4N9DwDGySOqnplCk.7ti_vJZlBJ5tBUPLLb26Bc2tAIua6JHGbIi4KfRDyrc"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -59,8 +63,10 @@ async def query_func(
     # router_agent = get_router_agent(user_id, session_id)
     # print(await router_agent(msgs))
     memory = await get_short_term_memory(user_id, session_id)
+    long_term_memory = get_long_term_memory("知识助手", user_id)
 
-    router_agent = get_router_agent(memory)
+
+    router_agent = get_router_agent(memory, long_term_memory)
     # 路由查询
     msg_res = await router_agent(
         msgs,
@@ -71,11 +77,13 @@ async def query_func(
     intent = msg_res.content[0]["text"]
     agent = None
     if intent == "DocumentQA":
-        agent = get_docqa_agent(memory)
+        agent = get_docqa_agent(memory, long_term_memory)
     elif intent == "Writing":
-        agent = get_writing_agent(memory)
+        agent = get_writing_agent(memory, long_term_memory)
+    elif intent == "Translate":
+        agent = get_translate_agent(memory, long_term_memory)
     else:
-        agent = get_chat_agent(memory)
+        agent = get_chat_agent(memory, long_term_memory)
 
 
     await agent_app.state.session.load_session_state(

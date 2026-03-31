@@ -3,7 +3,8 @@ import os
 from agentscope.agent import ReActAgent
 from agentscope.model import DashScopeChatModel
 from agentscope.formatter import DashScopeMultiAgentFormatter
-from agentscope.tool import Toolkit, execute_python_code
+from agentscope.message import Msg
+from agentscope.tool import Toolkit, execute_python_code, ToolResponse
 from tools.time import get_current_time
 from tools.retrievers_block_content import retrivers_block_content
 from tools.websearch import zhipu_websearch
@@ -13,12 +14,13 @@ from .baseagent import create_base_agent
 # 缓存存储已创建的智能体实例
 _agent_cache = None
 def get_translate_agent(
-    memory: MemoryBase,
-    long_term_memory: LongTermMemoryBase,
+    memory: MemoryBase | None = None,
+    long_term_memory: LongTermMemoryBase | None = None,
 ) -> ReActAgent:
     """创建一个 ReAct 智能体并运行一个简单任务。"""
     global _agent_cache
 
+    # 只有在外部明确传入了记忆对象时才复用缓存，避免工具调用先行时“污染”缓存。
     if _agent_cache is not None:
         return _agent_cache
 
@@ -63,3 +65,21 @@ def get_translate_agent(
     _agent_cache = translate_agent
     
     return translate_agent
+
+
+async def translate(
+    query: str,
+) -> ToolResponse:
+    """翻译工具：将用户给定文本/指令翻译成目标语言。
+
+    该工具会调用内部的“文档翻译”子智能体，并直接输出翻译结果（不额外解释）。
+
+    Args:
+        query (str): 用户提出的翻译请求/待翻译内容。
+
+    Returns:
+        ToolResponse: 返回结果中 `content` 为文本内容块（`text`）。
+    """
+    agent = get_translate_agent()
+    res = await agent(Msg("user", query, "user"))
+    return ToolResponse(content=res.get_content_blocks("text"))

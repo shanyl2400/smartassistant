@@ -13,9 +13,9 @@ from agentscope.plan import PlanNotebook, Plan, SubTask
 def create_base_agent(
     name: str, 
     sys_prompt: str, 
-    toolkit:Toolkit, 
-    memory: MemoryBase,
-    long_term_memory: LongTermMemoryBase,
+    toolkit:Toolkit | None = None, 
+    memory: MemoryBase | None = None,
+    long_term_memory: LongTermMemoryBase | None = None,
     ) -> ReActAgent:
     agent = ReActAgent(
         name=name,

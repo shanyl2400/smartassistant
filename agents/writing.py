@@ -3,7 +3,8 @@ import os
 from agentscope.agent import ReActAgent
 from agentscope.model import DashScopeChatModel
 from agentscope.formatter import DashScopeMultiAgentFormatter
-from agentscope.tool import Toolkit, execute_python_code
+from agentscope.message import Msg
+from agentscope.tool import Toolkit, execute_python_code, ToolResponse
 from tools.time import get_current_time
 from agentscope.memory import MemoryBase
 from agentscope.token import CharTokenCounter
@@ -13,12 +14,13 @@ from agentscope.memory import LongTermMemoryBase
 # 缓存存储已创建的智能体实例
 _agent_cache = None
 def get_writing_agent(
-    memory: MemoryBase,
-    long_term_memory: LongTermMemoryBase,
+    memory: MemoryBase | None = None,
+    long_term_memory: LongTermMemoryBase | None = None,
     ) -> ReActAgent:        
     """创建一个 ReAct 智能体并运行一个简单任务。"""
     global _agent_cache
 
+    # 只有在外部明确传入了记忆对象时才复用缓存，避免工具调用先行时“污染”缓存。
     if _agent_cache is not None:
         return _agent_cache
 
@@ -44,7 +46,23 @@ def get_writing_agent(
         memory=memory,
         long_term_memory=long_term_memory,
     )
-
     _agent_cache = writing_agent
-    
     return writing_agent
+
+
+async def writing(
+    query: str,
+) -> ToolResponse:
+    """写作工具：根据用户需求生成文案。
+
+    该工具会调用内部的“帮我写作”子智能体，并直接输出生成结果（不额外解释）。
+
+    Args:
+        query (str): 用户提出的写作需求/主题/风格/场景等要求。
+
+    Returns:
+        ToolResponse: 返回结果中 `content` 为文本内容块（`text`）。
+    """
+    agent = get_writing_agent()
+    res = await agent(Msg("user", query, "user"))
+    return ToolResponse(content=res.get_content_blocks("text"))

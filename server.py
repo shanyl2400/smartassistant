@@ -10,8 +10,9 @@ from agentscope.message import Msg
 
 from agentscope_runtime.engine import AgentApp
 from agentscope_runtime.engine.schemas.agent_schemas import AgentRequest
-from agents.route_agent import get_router_agent, RoutingChoice
+from agents.route_agent import get_router_agent
 
+from agents.smartassistant import get_smartassistant_agent
 from agents.docqa import get_docqa_agent
 from agents.writing import get_writing_agent
 from agents.chat import get_chat_agent
@@ -22,7 +23,7 @@ from memory.long_term_memory import get_long_term_memory
 print("✅ 依赖导入成功")
 
 os.environ["DASHSCOPE_API_KEY"] = "sk-a6ec71ba516747baba699ec2d81ff1a8"
-os.environ["AS_TOKEN"] = "ory_at_aEw8Fo7uTrEiBVXGEw4nWP1B3Zf4N9DwDGySOqnplCk.7ti_vJZlBJ5tBUPLLb26Bc2tAIua6JHGbIi4KfRDyrc"
+os.environ["AS_TOKEN"] = "ory_at_hFFIhf7WSmkGmC6-r_vPJDynskshxxJXbUHFfTx9CK0.p95XlnxEtJqNn-Epnhh8zJYGbn5YJe2vmg2kul-EsRY"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,9 +50,7 @@ agent_app = AgentApp(
 
 print("✅ Agent App创建成功")
 
-
-@agent_app.query(framework="agentscope")
-async def query_func(
+async def intent_process(
     self,
     msgs,
     request: AgentRequest = None,
@@ -102,6 +101,44 @@ async def query_func(
         session_id=session_id,
         user_id=user_id,
         agent=agent,
+    )
+
+
+@agent_app.query(framework="agentscope")
+async def query_func(
+    self,
+    msgs,
+    request: AgentRequest = None,
+    **kwargs,
+):
+    session_id = request.session_id
+    user_id = request.user_id
+
+    # router_agent = get_router_agent(user_id, session_id)
+    # print(await router_agent(msgs))
+    memory = await get_short_term_memory(user_id, session_id)
+    long_term_memory = get_long_term_memory("知识助手", user_id)
+
+
+    smartassistant = get_smartassistant_agent(memory, long_term_memory)
+
+
+    await agent_app.state.session.load_session_state(
+        session_id=session_id,
+        user_id=user_id,
+        agent=smartassistant,
+    )
+
+    async for msg, last in stream_printing_messages(
+        agents=[smartassistant],
+        coroutine_task=smartassistant(msgs),
+    ):
+        yield msg, last
+
+    await agent_app.state.session.save_session_state(
+        session_id=session_id,
+        user_id=user_id,
+        agent=smartassistant,
     )
 
 # 启动服务（监听8090端口）

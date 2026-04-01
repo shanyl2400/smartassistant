@@ -35,7 +35,12 @@ def get_docqa_agent(
         不加入任何文档外的知识或假设, 
         如果参考文档中包含图片地址，回答时需要保留相关引用段落内容中的图片地址。
         如果输出内容自行生成了类似于![](xxxxxx-xxxxx/xxxxx.xxx) 和![](/api/kc-mc/v2/xxxxxxx)格式的回答，说明你犯错了，请重新生成。
-        请优先查询召回文档，如果文档中没有相关答案，再调用网络搜索工具。'''
+        请优先查询召回文档，如果文档中没有相关答案，再调用网络搜索工具。
+        
+    ## Rules & Constraints
+    - 如果你发现自己陷入了重复调用同一个工具的循环，请立即中断，并检查是否已经可以交付结果。
+    - **不要为了调用而调用**。工具是手段，交付（Final Answer）才是目的。
+        '''
     docqa_agent = create_base_agent(
         name=name, 
         sys_prompt=sys_prompt, 
@@ -49,7 +54,7 @@ def get_docqa_agent(
 async def docqa(
     query: str
 ) -> ToolResponse:
-    """文档问答工具：基于召回文档回答用户问题。
+    """问答工具：基于召回文档 & 网络信息回答用户问题。
 
     该工具会使用内部的“文档问答”子智能体：
     1) 优先检索召回文档并从中提取关键信息；

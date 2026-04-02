@@ -6,6 +6,7 @@ from agentscope.formatter import DashScopeMultiAgentFormatter
 from agentscope.message import Msg
 from agentscope.plan import PlanNotebook
 from tools.time import get_current_time
+from tools.file_writer import append_or_create_file
 from agentscope.memory import MemoryBase
 from agentscope.token import CharTokenCounter
 from .baseagent import create_base_agent
@@ -42,6 +43,7 @@ def get_smartassistant_agent(
     toolkit.register_tool_function(zhipu_websearch)
     toolkit.register_tool_function(execute_python_code)
     toolkit.register_tool_function(view_text_file)
+    toolkit.register_tool_function(append_or_create_file)
 
     # toolkit.register_agent_skill("skills/A2UI_response_generator")
 
@@ -50,6 +52,8 @@ def get_smartassistant_agent(
     sys_prompt='''你是一个专业、严谨且具备极强执行力的全能知识助手。
     你精通信息检索、深度写作与精准翻译。
     若已得到回答，请不要重复调用工具。
+
+    若回答文本过长,可使用"写文件工具", 将每次回答的段落写入文件, 返回结果时告诉用户文件路径即可
 
     ## Rules & Constraints
     - 如果你发现自己陷入了重复调用同一个工具的循环，请立即中断，并检查是否已经可以交付结果。

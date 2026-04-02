@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from agentscope.message import TextBlock, ToolUseBlock
 from agentscope.tool import ToolResponse, Toolkit, execute_python_code
+from tools.remove_duplicate_block import remove_duplicate_files_and_sort
 # ==========================================
 # 默认配置 (Defaults)
 # ==========================================
@@ -659,6 +660,35 @@ async def do_retrieval(as_ctx: dict, query: str, content: str):
         return {"text": f"[Error] {e}"}
 
 
+def format_data(data):
+    # Load the JSON data
+    # with open("/root/kg_bot/retrievers_block_content1.json", "r", encoding="utf-8") as file:
+    #     data = json.load(file)
+    # Extract doc_name and content into a dictionary
+    result = {}
+    for item in data["text"]:
+        retrieve_source_type = item.get("retrieve_source_type", "")
+        if retrieve_source_type == "DOC_LIB":
+            doc_name = item["meta"]["doc_name"]
+        elif retrieve_source_type == "FAQ":
+            doc_name =  item["meta"]["title"][0] if len(item["meta"]["title"]) > 0 else "未知文件名"
+        elif retrieve_source_type == "USER_INPUT":
+            doc_name = item["meta"]["doc_name"]
+        content = item["content"]
+        if doc_name in result.keys():
+            result[doc_name].append(content.replace(" ",""))
+        else:
+            result[doc_name] = [] 
+            result[doc_name].append(content.replace(" ",""))
+
+    # Print the result
+    # for doc_name, content in result.items():
+    #     print(f"{doc_name}: {content[:100]}...")  # Display first 100 characters of content
+
+    # If you want to see the full dictionary:
+    # print(result)
+    return result
+
 # 文档召回
 async def retrivers_block_content(query: str) -> ToolResponse:
     """
@@ -694,44 +724,18 @@ async def retrivers_block_content(query: str) -> ToolResponse:
     }
 }   
     result = await do_retrieval(ctx, query, "")
+    # is_time_response = parse_fenced_json(full.get("info", {}).get("answer", {}))
+    result = remove_duplicate_files_and_sort(result, {})
     return ToolResponse(
         content=[
             TextBlock(
                 type="text",
-                text=f"召回结果为：{result}",
+                text=f"召回结果为：{format_data(result)}",
             ),
         ],
     )
 
 # 本地调试用
 if __name__ == "__main__":
-    # 模拟 Context
-    mock_ctx = {
-    "authorization": "ory_at_hlcyaot4KOZKu6NtmHVpcbWCfOYFwr_gT4R_8Cmj0BA.EgBzdjV8w7kobGe1jOUOpjDu5YfvaTpJPVwL5WcUALw",
-    "app_id": "O6UbuyEwaBVOhw5lP7-",
-    "doc_info": {
-        "doc_dsid": "3",
-        "doc_fields": []
-    },
-    "file_infos": None,
-    "user_infos": [
-        {
-            "user_id": "4a2e1f06-e982-11e5-8c08-dcd2fc061e41",
-            "user_name": "夏磊（Lay）"
-        }
-    ],
-    "tool_params": {
-        "ad_url": "https://anyshare.aishu.cn:4443",
-        "as_url": "https://anyshare.aishu.cn:443",
-        "background_doc": "",
-        "embedding_name": "embedding_inner_as",
-        "embedding_url": "https://anyshare.aishu.cn:4443/v1/embeddings",
-        "model_name": "deepseek",
-        "rerank_url": "http://reranker:8343/v1/reranker",
-        "selected_content": "",
-        "template": ""
-    }
-}
-
-os.environ["AS_TOKEN"] = "ory_at_hlcyaot4KOZKu6NtmHVpcbWCfOYFwr_gT4R_8Cmj0BA.EgBzdjV8w7kobGe1jOUOpjDu5YfvaTpJPVwL5WcUALw"    
-asyncio.run(retrivers_block_content("anyshare有什么新特性?"))
+    os.environ["AS_TOKEN"] = "ory_at_f1AEPtRucEYcBi8BZN6wWS35FKNPKsIRfOP0m9MoBOA.iTdh71XCrraKyLhSDjMM272oT0XHf5ulO3IG_PiJaa4"
+    asyncio.run(retrivers_block_content("anyshare有什么新特性?"))

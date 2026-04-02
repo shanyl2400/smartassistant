@@ -35,28 +35,25 @@ def create_base_agent(
     long_term_memory: LongTermMemoryBase | None = None,
     plan_notebook: PlanNotebook | None = None,
     ) -> ReActAgent:
-    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-    deepseek_base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
     # 优先直连 DeepSeek（OpenAI 兼容接口）；未配置则回退到 DashScope。
     model = (
         OpenAIChatModel(
-            model_name=deepseek_model,
-            api_key=deepseek_api_key,
+            model_name="deepseek-v3",
+            api_key=os.getenv("LITELLM_KEY"),
             stream=True,
-            client_kwargs={"base_url": deepseek_base_url},
+            client_kwargs={"base_url": "http://localhost:4000/v1"},
         )
-        if deepseek_api_key
+        if os.getenv("LITELLM_KEY")
         else DashScopeChatModel(
-            model_name=os.getenv("DASHSCOPE_MODEL", "deepseek-r1"),
+            model_name=os.getenv("DASHSCOPE_MODEL", "ep-20260122102956-ws5k8"),
             api_key=os.environ["DASHSCOPE_API_KEY"],
             stream=True,
             enable_thinking=False,
         )
     )
 
-    formatter = DeepSeekChatFormatter() if deepseek_api_key else DashScopeChatFormatter()
+    formatter = DeepSeekChatFormatter() if os.getenv("LITELLM_KEY") else DashScopeChatFormatter()
 
     agent = ReActAgent(
         name=name,

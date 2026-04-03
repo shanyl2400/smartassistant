@@ -1,16 +1,14 @@
-import json
-import os
-from datetime import datetime
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from agentscope.pipeline import stream_printing_messages
 from agentscope.session import RedisSession
-from agentscope.message import Msg
-
 from agentscope_runtime.engine import AgentApp
 from agentscope_runtime.engine.schemas.agent_schemas import AgentRequest
+from agentscope.agent import AgentBase
 from agents.route_agent import get_router_agent
+
 
 from agents.smartassistant import get_smartassistant_agent
 from agents.docqa import get_docqa_agent
@@ -22,8 +20,6 @@ from memory.long_term_memory import get_long_term_memory
 
 print("✅ 依赖导入成功")
 
-os.environ["DASHSCOPE_API_KEY"] = "sk-a6ec71ba516747baba699ec2d81ff1a8"
-os.environ["AS_TOKEN"] = "ory_at_hFFIhf7WSmkGmC6-r_vPJDynskshxxJXbUHFfTx9CK0.p95XlnxEtJqNn-Epnhh8zJYGbn5YJe2vmg2kul-EsRY"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,57 +46,56 @@ agent_app = AgentApp(
 
 print("✅ Agent App创建成功")
 
-async def intent_process(
-    self,
-    msgs,
-    request: AgentRequest = None,
-    **kwargs,
-):
-    session_id = request.session_id
-    user_id = request.user_id
 
-    # router_agent = get_router_agent(user_id, session_id)
-    # print(await router_agent(msgs))
-    memory = await get_short_term_memory(user_id, session_id)
-    long_term_memory = get_long_term_memory("知识助手", user_id)
+def _pre_print_attach_tool_trace(self: AgentBase, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """在 print 进入队列前，把本轮消息里的 tool 调用参数与结果写入 metadata，便于前端读取。
+
+    仅在流式片段的最后一次 print（last=True）写入，避免参数/结果尚未拼完就推送。
+    """
+    msg = kwargs.get("msg")
+    if msg is None:
+        return kwargs
+    content = getattr(msg, "content", None)
+    if not isinstance(content, list):
+        return kwargs
+    tool_calls: list[dict[str, Any]] = []
+    tool_results: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "tool_use":
+            tool_calls.append(
+                {
+                    "id": block.get("id"),
+                    "name": block.get("name"),
+                    "arguments": block.get("input"),
+                },
+            )
+        elif btype == "tool_result":
+            tool_results.append(
+                {
+                    "id": block.get("id"),
+                    "name": block.get("name"),
+                    "output": block.get("output"),
+                },
+            )
+    if not tool_calls and not tool_results:
+        return kwargs
+    md = dict(msg.metadata) if getattr(msg, "metadata", None) else {}
+    if tool_calls:
+        md["tool_calls"] = tool_calls
+    if tool_results:
+        md["tool_results"] = tool_results
+    msg.metadata = md
+    return kwargs
 
 
-    router_agent = get_router_agent(memory, long_term_memory)
-    # 路由查询
-    msg_res = await router_agent(
-        msgs,
-        # structured_model=RoutingChoice,
-    )
-
-    # 结构化输出存储在 metadata 字段中
-    intent = msg_res.content[0]["text"]
-    agent = None
-    if intent == "DocumentQA":
-        agent = get_docqa_agent(memory, long_term_memory)
-    elif intent == "Writing":
-        agent = get_writing_agent(memory, long_term_memory)
-    elif intent == "Translate":
-        agent = get_translate_agent(memory, long_term_memory)
-    else:
-        agent = get_chat_agent(memory, long_term_memory)
-
-
-    await agent_app.state.session.load_session_state(
-        session_id=session_id,
-        user_id=user_id,
-        agent=agent,
-    )
-
-    async for msg, last in stream_printing_messages(
-        agents=[agent],
-        coroutine_task=agent(msgs),
-    ):
-        yield msg, last
-
-    await agent_app.state.session.save_session_state(
-        session_id=session_id,
-        user_id=user_id,
-        agent=agent,
+def register_tool_trace_pre_print(agent: AgentBase) -> None:
+    agent.register_instance_hook(
+        "pre_print",
+        "attach_tool_trace_metadata",
+        _pre_print_attach_tool_trace,
     )
 
 
@@ -114,20 +109,16 @@ async def query_func(
     session_id = request.session_id
     user_id = request.user_id
 
-    # router_agent = get_router_agent(user_id, session_id)
-    # print(await router_agent(msgs))
     memory = await get_short_term_memory(user_id, session_id)
     long_term_memory = get_long_term_memory("知识助手", user_id)
 
-
     smartassistant = get_smartassistant_agent(memory, long_term_memory)
-
-
     await agent_app.state.session.load_session_state(
         session_id=session_id,
         user_id=user_id,
         agent=smartassistant,
     )
+    register_tool_trace_pre_print(smartassistant)
 
     async for msg, last in stream_printing_messages(
         agents=[smartassistant],

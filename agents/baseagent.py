@@ -39,10 +39,11 @@ def create_base_agent(
     # 优先直连 DeepSeek（OpenAI 兼容接口）；未配置则回退到 DashScope。
     model = (
         OpenAIChatModel(
-            model_name="deepseek-v3",
+            model_name="dashscope/qwen3-max",
             api_key=os.getenv("LITELLM_KEY"),
             stream=True,
             client_kwargs={"base_url": "http://localhost:4000/v1"},
+            generate_kwargs={"stream": True},
         )
         if os.getenv("LITELLM_KEY")
         else DashScopeChatModel(
@@ -62,6 +63,7 @@ def create_base_agent(
         formatter=formatter,
         toolkit=toolkit,
         memory=memory,
+        print_hint_msg=True,
         compression_config=ReActAgent.CompressionConfig(
             enable=True,
             agent_token_counter=CharTokenCounter(),

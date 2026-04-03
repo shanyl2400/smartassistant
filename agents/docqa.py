@@ -1,7 +1,10 @@
-import os
+import asyncio
+from collections import OrderedDict
+from typing import AsyncGenerator
 
 from agentscope.agent import ReActAgent
-from agentscope.message import Msg
+from agentscope.message import Msg, TextBlock
+from agentscope.pipeline import stream_printing_messages
 from agentscope.tool import ToolResponse, Toolkit, execute_python_code
 from tools.time import get_current_time
 from tools.retrievers_block_content import retrivers_block_content
@@ -51,9 +54,26 @@ def get_docqa_agent(
     _agent_cache = docqa_agent
     return docqa_agent
 
+def _sub_agent_prints_to_text_blocks(msgs: list[Msg]) -> list[TextBlock]:
+    """将子智能体 print 出的消息转成可写入 tool_result 的文本块（含工具调用提示）。"""
+    blocks: list[TextBlock] = []
+    for m in msgs:
+        for block in m.get_content_blocks():
+            if block["type"] == "text":
+                blocks.append(block)
+            elif block["type"] == "tool_use":
+                blocks.append(
+                    TextBlock(
+                        type="text",
+                        text=f"Calling tool {block['name']} ...",
+                    ),
+                )
+    return blocks
+
+
 async def docqa(
     query: str
-) -> ToolResponse:
+) -> AsyncGenerator[ToolResponse, None]:
     """问答工具：基于召回文档 & 网络信息回答用户问题。
 
     该工具会使用内部的“文档问答”子智能体：
@@ -61,17 +81,64 @@ async def docqa(
     2) 如文档中缺少答案，再调用网络搜索补充信息；
     3) 回答内容必须严格锚定文档表述，不引入文档外的臆测；若文档包含图片/链接引用，需要在回答中保留对应引用内容。
 
+    流式说明：子智能体推理过程中的 print 会多次 yield ToolResponse，由外层 ReActAgent 推送到会话流；
+    最后一帧仅含子智能体最终答复文本，供父模型记忆与续聊。
+
     Args:
         query (str): 用户要咨询的问题/需求。
 
-    Returns:
-        ToolResponse: 返回结果中 `content` 为文本内容块（`text`）。
+    Yields:
+        ToolResponse: 中间块 is_last=False；最后一帧 is_last=True，content 为最终文本块。
     """
-    # 取出/创建子智能体实例
-
     agent = get_docqa_agent()
-    # 让子智能体完成任务
-    res = await agent(Msg("user", query, "user"))
-    return ToolResponse(
-        content=res.get_content_blocks("text"),
+    agent.set_console_output_enabled(False)
+
+    msgs_by_id: OrderedDict[str, Msg] = OrderedDict()
+    final_holder: list[Msg] = []
+
+    async def run_sub() -> None:
+        msg_res = await agent(Msg("user", query, "user"))
+        final_holder.append(msg_res)
+
+    async for msg, _ in stream_printing_messages(
+        agents=[agent],
+        coroutine_task=run_sub(),
+    ):
+        msgs_by_id[msg.id] = msg
+        if msg.metadata and msg.metadata.get("_is_interrupted", False):
+            yield ToolResponse(
+                content=_sub_agent_prints_to_text_blocks(list(msgs_by_id.values())),
+                stream=True,
+                is_last=True,
+                is_interrupted=True,
+            )
+            raise asyncio.CancelledError()
+
+        yield ToolResponse(
+            content=_sub_agent_prints_to_text_blocks(list(msgs_by_id.values())),
+            stream=True,
+            is_last=False,
+        )
+
+    if not final_holder:
+        yield ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text="<system-info>文档问答子智能体未返回结果。</system-info>",
+                ),
+            ],
+            stream=True,
+            is_last=True,
+        )
+        return
+
+    final_msg = final_holder[0]
+    final_text = list(final_msg.get_content_blocks("text"))
+    if not final_text:
+        final_text = _sub_agent_prints_to_text_blocks(list(msgs_by_id.values()))
+    yield ToolResponse(
+        content=final_text,
+        stream=True,
+        is_last=True,
     )

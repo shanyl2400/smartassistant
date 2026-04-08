@@ -42,7 +42,6 @@ def zhipu_websearch(
         
         # 解析响应
         result = response.json()
-        print(f"搜索结果：{result}")
         return ToolResponse(
         content=[
             TextBlock(
@@ -56,5 +55,5 @@ def zhipu_websearch(
 
 if __name__ == "__main__":
     search_query = "上海天气怎么样"
-    result = web_search(search_query)
+    result = zhipu_websearch(search_query)
     print(result)

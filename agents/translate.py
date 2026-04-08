@@ -1,34 +1,12 @@
-import os
-
 from agentscope.agent import ReActAgent
-from agentscope.model import DashScopeChatModel
-from agentscope.formatter import DashScopeMultiAgentFormatter
 from agentscope.message import Msg
-from agentscope.tool import Toolkit, execute_python_code, ToolResponse
-from tools.time import get_current_time
-from tools.retrievers_block_content import retrivers_block_content
-from tools.websearch import zhipu_websearch
+from agentscope.tool import Toolkit, ToolResponse
 from agentscope.memory import MemoryBase
 from agentscope.memory import LongTermMemoryBase
 from .baseagent import create_base_agent
-# 缓存存储已创建的智能体实例
-_agent_cache = None
-def get_translate_agent(
-    memory: MemoryBase | None = None,
-    long_term_memory: LongTermMemoryBase | None = None,
-) -> ReActAgent:
-    """创建一个 ReAct 智能体并运行一个简单任务。"""
-    global _agent_cache
+from .intentdetect import ScenariosAgent
 
-    # 只有在外部明确传入了记忆对象时才复用缓存，避免工具调用先行时“污染”缓存。
-    if _agent_cache is not None:
-        return _agent_cache
-
-    # 准备工具
-    toolkit = Toolkit()
-
-    name="文档翻译"
-    sys_prompt='''角色及适用场景
+_TRANSLATE_SYS_PROMPT = """角色及适用场景
 你是一名世界顶级的专业翻译官，你的核心使命是精准、流畅、自然地在任何语言之间传递信息和情感。你不仅翻译文字，更是在沟通文化和专业技术。你具备深厚的语言学知识、文化背景洞察力和深厚的行业领域技能。
 翻译遵守铁的纪律：
   * 风格保持：绝对保留原文的风格、语气和节奏。技术文档需准确严谨，诗歌需注重韵律和意象，广告语需朗朗上口。
@@ -41,7 +19,7 @@ def get_translate_agent(
 若当前用户指令与历史对话上下文信息无关，则无需参考历史对话上下文 ，专注输出当前内容；若有关联，需结合历史对话上下文补充细节!
 
 这个任务对我至关重要，让我们一步一步思考，请逐行、逐段翻译文档内容和严格检查，若发现问题及时纠正。
- 1.深度输入分析 
+ 1.深度输入分析
     * 语言检测：自动精准识别输入内容的源语言。能处理混合语言文本，识别主体语言（如中文、英文、日文、法文等）。
     * 内容解析：分析文本的领域（如技术文档、文学诗歌、营销文案、日常对话）、语气（正式、随意、热情、严肃）和潜在文化元素（俚语、成语、典故）。
 2. 目标语言判断：
@@ -51,20 +29,51 @@ def get_translate_agent(
         * 若原文为英文，则翻译为简体中文；
         * 若原文为其他语言，则默认翻译为简体中文。
 
-  禁止输出翻译内容以外的任何信息，直接输出翻译后的内容！ '''
-    translate_agent = create_base_agent(
-        name=name, 
-        sys_prompt=sys_prompt, 
-        toolkit=toolkit, 
-        memory=memory,
-        long_term_memory=long_term_memory,
-    )
+  禁止输出翻译内容以外的任何信息，直接输出翻译后的内容！ """
 
-    
 
-    _agent_cache = translate_agent
-    
-    return translate_agent
+class TranslateScenariosAgent(ScenariosAgent):
+    """翻译场景：多语言互译，保留风格、术语与排版。"""
+
+    def __init__(self,
+        memory: MemoryBase | None = None, 
+        long_term_memory: LongTermMemoryBase | None = None) -> None:
+        
+        super().__init__()
+        toolkit = Toolkit()
+        self._agent = create_base_agent(
+            name=self.name,
+            sys_prompt=_TRANSLATE_SYS_PROMPT,
+            toolkit=toolkit,
+            memory=memory,
+            long_term_memory=long_term_memory,
+        )
+    @property
+    def name(self) -> str:
+        return "文档翻译"
+
+    @property
+    def description(self) -> str:
+        return (
+            "用户需要将文本或文档在多种语言间互译；指定目标语或按默认中英互译；"
+            "要求保留格式、术语与文化表达，仅输出译文。"
+        )
+
+    def get_agent(
+        self,
+    ) -> ReActAgent:
+        return self._agent
+
+
+translate_scenario = TranslateScenariosAgent()
+
+
+def get_translate_agent(
+    memory: MemoryBase | None = None,
+    long_term_memory: LongTermMemoryBase | None = None,
+) -> ReActAgent:
+    """创建一个 ReAct 智能体并运行一个简单任务。"""
+    return translate_scenario.get_agent()
 
 
 async def translate(

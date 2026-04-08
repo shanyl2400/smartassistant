@@ -7,6 +7,7 @@ from agentscope.formatter import (
     DashScopeMultiAgentFormatter,
     DashScopeChatFormatter,
     DeepSeekChatFormatter,
+    OpenAIChatFormatter,
 )
 from agentscope.tool import Toolkit
 from agentscope.memory import MemoryBase
@@ -35,26 +36,26 @@ def create_base_agent(
     long_term_memory: LongTermMemoryBase | None = None,
     plan_notebook: PlanNotebook | None = None,
     ) -> ReActAgent:
-
     # 优先直连 DeepSeek（OpenAI 兼容接口）；未配置则回退到 DashScope。
     model = (
-        OpenAIChatModel(
-            model_name="dashscope/qwen3-max",
+        OpenAIChatModel( 
+            model_name="deepseek-reasoner",
             api_key=os.getenv("LITELLM_KEY"),
             stream=True,
             client_kwargs={"base_url": "http://localhost:4000/v1"},
             generate_kwargs={"stream": True},
+            enable_thinking=True,
         )
         if os.getenv("LITELLM_KEY")
         else DashScopeChatModel(
             model_name=os.getenv("DASHSCOPE_MODEL", "ep-20260122102956-ws5k8"),
             api_key=os.environ["DASHSCOPE_API_KEY"],
             stream=True,
-            enable_thinking=False,
+            enable_thinking=True,
         )
     )
 
-    formatter = DeepSeekChatFormatter() if os.getenv("LITELLM_KEY") else DashScopeChatFormatter()
+    formatter = OpenAIChatFormatter() 
 
     agent = ReActAgent(
         name=name,
@@ -64,25 +65,25 @@ def create_base_agent(
         toolkit=toolkit,
         memory=memory,
         print_hint_msg=True,
-        compression_config=ReActAgent.CompressionConfig(
-            enable=True,
-            agent_token_counter=CharTokenCounter(),
-            trigger_threshold=10000,
-            keep_recent=3,
-            summary_schema=CustomSummary,
-            compression_prompt=(
-                "<system-hint>请总结上述对话，"
-                "重点关注主题、关键讨论点和待完成任务。"
-                "每个字段尽量简洁，不要啰嗦。</system-hint>"
-            ),
-            summary_template=(
-                "<system-info>对话摘要：\n"
-                "主题：{main_topic}\n\n"
-                "关键观点：\n{key_points}\n\n"
-                "待完成任务：\n{pending_tasks}"
-                "</system-info>"
-            ),
-        ),
+        # compression_config=ReActAgent.CompressionConfig(
+        #     enable=True,
+        #     agent_token_counter=CharTokenCounter(),
+        #     trigger_threshold=10000,
+        #     keep_recent=3,
+        #     summary_schema=CustomSummary,
+        #     compression_prompt=(
+        #         "<system-hint>请总结上述对话，"
+        #         "重点关注主题、关键讨论点和待完成任务。"
+        #         "每个字段尽量简洁，不要啰嗦。</system-hint>"
+        #     ),
+        #     summary_template=(
+        #         "<system-info>对话摘要：\n"
+        #         "主题：{main_topic}\n\n"
+        #         "关键观点：\n{key_points}\n\n"
+        #         "待完成任务：\n{pending_tasks}"
+        #         "</system-info>"
+        #     ),
+        # ),
         long_term_memory=long_term_memory,
         long_term_memory_mode="agent_control",  # 使用 agent_control 模式
         plan_notebook=plan_notebook,

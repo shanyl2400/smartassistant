@@ -1,5 +1,12 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
+
+from dotenv import load_dotenv
+
+# 优先从与 server.py 同级的 .env 加载（再回退到当前工作目录下的 .env）
+load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv()
 
 from fastapi import FastAPI
 from agentscope.pipeline import stream_printing_messages
@@ -14,7 +21,6 @@ from agents.smartassistant import get_smartassistant_agent
 from agents.docqa import get_docqa_agent
 from agents.writing import get_writing_agent
 from agents.chat import get_chat_agent
-from agents.translate import get_translate_agent
 from memory.short_term_memory import get_short_term_memory
 from memory.long_term_memory import get_long_term_memory
 from adapters.agui_adapter import CustomAGUIAdapter

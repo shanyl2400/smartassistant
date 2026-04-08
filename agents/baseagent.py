@@ -36,26 +36,29 @@ def create_base_agent(
     long_term_memory: LongTermMemoryBase | None = None,
     plan_notebook: PlanNotebook | None = None,
     ) -> ReActAgent:
-    # 优先直连 DeepSeek（OpenAI 兼容接口）；未配置则回退到 DashScope。
-    model = (
-        OpenAIChatModel( 
-            model_name="deepseek-reasoner",
-            api_key=os.getenv("LITELLM_KEY"),
+    # 模型选择规则：
+    # - 若配置了 LiteLLM（OpenAI 兼容接口），优先走 LiteLLM；模型名用环境变量控制，避免硬编码到 DeepSeek。
+    # - 否则回退到 DashScope（通义）。
+    litellm_key = os.getenv("LITELLM_KEY")
+    if litellm_key:
+        model = OpenAIChatModel(
+            model_name=os.getenv("LITELLM_MODEL", "dashscope/qwen3-max"),
+            api_key=litellm_key,
             stream=True,
-            client_kwargs={"base_url": "http://localhost:4000/v1"},
+            client_kwargs={"base_url": os.getenv("LITELLM_BASE_URL", "http://localhost:4000/v1")},
             generate_kwargs={"stream": True},
             enable_thinking=True,
         )
-        if os.getenv("LITELLM_KEY")
-        else DashScopeChatModel(
-            model_name=os.getenv("DASHSCOPE_MODEL", "ep-20260122102956-ws5k8"),
+        formatter = OpenAIChatFormatter()
+    else:
+        model = DashScopeChatModel(
+            # 你当前的 Key 只允许访问 dashscope/qwen3-max 时，请把 DASHSCOPE_MODEL 设为 qwen3-max
+            model_name=os.getenv("DASHSCOPE_MODEL", "qwen3-max"),
             api_key=os.environ["DASHSCOPE_API_KEY"],
             stream=True,
             enable_thinking=True,
         )
-    )
-
-    formatter = OpenAIChatFormatter() 
+        formatter = DashScopeChatFormatter()
 
     agent = ReActAgent(
         name=name,

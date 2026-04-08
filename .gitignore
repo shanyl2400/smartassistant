@@ -1,4 +1,12 @@
 *.db
 .env
-__pycache__
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
 logs
+
+# Python virtual environment
+.venv/
+venv/
+.vscode/
